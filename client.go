@@ -23,39 +23,11 @@ var ErrBadHandshake = errors.New("websocket: bad handshake")
 
 var errInvalidCompression = errors.New("websocket: invalid compression negotiation")
 
-// NewClient creates a new client connection using the given net connection.
-// The URL u specifies the host and request URI. Use requestHeader to specify
-// the origin (Origin), subprotocols (Sec-WebSocket-Protocol) and cookies
-// (Cookie). Use the response.Header to get the selected subprotocol
-// (Sec-WebSocket-Protocol) and cookies (Set-Cookie).
-//
-// If the WebSocket handshake fails, ErrBadHandshake is returned along with a
-// non-nil *http.Response so that callers can handle redirects, authentication,
-// etc.
-//
-// Deprecated: Use Dialer instead.
-func NewClient(netConn net.Conn, u *url.URL, requestHeader http.Header, readBufSize, writeBufSize int) (c *Conn, response *http.Response, err error) {
-	d := Dialer{
-		ReadBufferSize:  readBufSize,
-		WriteBufferSize: writeBufSize,
-		NetDial: func(net, addr string) (net.Conn, error) {
-			return netConn, nil
-		},
-	}
-	return d.Dial(u.String(), requestHeader)
-}
-
 // A Dialer contains options for connecting to WebSocket server.
 type Dialer struct {
 	// NetDial specifies the dial function for creating TCP connections. If
 	// NetDial is nil, net.Dial is used.
 	NetDial func(network, addr string) (net.Conn, error)
-
-	// Proxy specifies a function to return a proxy for a given
-	// Request. If the function returns a non-nil error, the
-	// request is aborted with the provided error.
-	// If Proxy is nil or returns a nil *URL, no proxy is used.
-	Proxy func(*http.Request) (*url.URL, error)
 
 	// TLSClientConfig specifies the TLS configuration to use with tls.Client.
 	// If nil, the default configuration is used.
@@ -105,9 +77,7 @@ func hostPortNoPort(u *url.URL) (hostPort, hostNoPort string) {
 }
 
 // DefaultDialer is a dialer with all fields set to the default values.
-var DefaultDialer = &Dialer{
-	Proxy: http.ProxyFromEnvironment,
-}
+var DefaultDialer = &Dialer{}
 
 // Dial creates a new client connection. Use requestHeader to specify the
 // origin (Origin), subprotocols (Sec-WebSocket-Protocol) and cookies (Cookie).
@@ -121,9 +91,7 @@ var DefaultDialer = &Dialer{
 func (d *Dialer) Dial(urlStr string, requestHeader http.Header) (*Conn, *http.Response, error) {
 
 	if d == nil {
-		d = &Dialer{
-			Proxy: http.ProxyFromEnvironment,
-		}
+		d = &Dialer{}
 	}
 
 	challengeKey, err := generateChallengeKey()
@@ -226,21 +194,6 @@ func (d *Dialer) Dial(urlStr string, requestHeader http.Header) (*Conn, *http.Re
 				return nil, err
 			}
 			return c, nil
-		}
-	}
-
-	// If needed, wrap the dial function to connect through a proxy.
-	if d.Proxy != nil {
-		proxyURL, err := d.Proxy(req)
-		if err != nil {
-			return nil, nil, err
-		}
-		if proxyURL != nil {
-			dialer, err := proxy_FromURL(proxyURL, netDialerFunc(netDial))
-			if err != nil {
-				return nil, nil, err
-			}
-			netDial = dialer.Dial
 		}
 	}
 

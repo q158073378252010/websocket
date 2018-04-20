@@ -234,48 +234,6 @@ func (u *Upgrader) Upgrade(w http.ResponseWriter, r *http.Request, responseHeade
 	return c, nil
 }
 
-// Upgrade upgrades the HTTP server connection to the WebSocket protocol.
-//
-// Deprecated: Use websocket.Upgrader instead.
-//
-// Upgrade does not perform origin checking. The application is responsible for
-// checking the Origin header before calling Upgrade. An example implementation
-// of the same origin policy check is:
-//
-//	if req.Header.Get("Origin") != "http://"+req.Host {
-//		http.Error(w, "Origin not allowed", http.StatusForbidden)
-//		return
-//	}
-//
-// If the endpoint supports subprotocols, then the application is responsible
-// for negotiating the protocol used on the connection. Use the Subprotocols()
-// function to get the subprotocols requested by the client. Use the
-// Sec-Websocket-Protocol response header to specify the subprotocol selected
-// by the application.
-//
-// The responseHeader is included in the response to the client's upgrade
-// request. Use the responseHeader to specify cookies (Set-Cookie) and the
-// negotiated subprotocol (Sec-Websocket-Protocol).
-//
-// The connection buffers IO to the underlying network connection. The
-// readBufSize and writeBufSize parameters specify the size of the buffers to
-// use. Messages can be larger than the buffers.
-//
-// If the request is not a valid WebSocket handshake, then Upgrade returns an
-// error of type HandshakeError. Applications should handle this error by
-// replying to the client with an HTTP error response.
-func Upgrade(w http.ResponseWriter, r *http.Request, responseHeader http.Header, readBufSize, writeBufSize int) (*Conn, error) {
-	u := Upgrader{ReadBufferSize: readBufSize, WriteBufferSize: writeBufSize}
-	u.Error = func(w http.ResponseWriter, r *http.Request, status int, reason error) {
-		// don't return errors to maintain backwards compatibility
-	}
-	u.CheckOrigin = func(r *http.Request) bool {
-		// allow all connections by default
-		return true
-	}
-	return u.Upgrade(w, r, responseHeader)
-}
-
 // Subprotocols returns the subprotocols requested by the client in the
 // Sec-Websocket-Protocol header.
 func Subprotocols(r *http.Request) []string {
