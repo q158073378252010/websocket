@@ -77,7 +77,12 @@ func hostPortNoPort(u *url.URL) (hostPort, hostNoPort string) {
 }
 
 // DefaultDialer is a dialer with all fields set to the default values.
-var DefaultDialer = &Dialer{}
+var DefaultDialer = &Dialer{
+	HandshakeTimeout: 45 * time.Second,
+}
+
+// nilDialer is dialer to use when receiver is nil.
+var nilDialer Dialer = *DefaultDialer
 
 // Dial creates a new client connection. Use requestHeader to specify the
 // origin (Origin), subprotocols (Sec-WebSocket-Protocol) and cookies (Cookie).
@@ -91,7 +96,7 @@ var DefaultDialer = &Dialer{}
 func (d *Dialer) Dial(urlStr string, requestHeader http.Header) (*Conn, *http.Response, error) {
 
 	if d == nil {
-		d = &Dialer{}
+		d = &nilDialer
 	}
 
 	challengeKey, err := generateChallengeKey()
@@ -159,13 +164,15 @@ func (d *Dialer) Dial(urlStr string, requestHeader http.Header) (*Conn, *http.Re
 			k == "Sec-Websocket-Extensions" ||
 			(k == "Sec-Websocket-Protocol" && len(d.Subprotocols) > 0):
 			return nil, nil, errors.New("websocket: duplicate header not allowed: " + k)
+		case k == "Sec-Websocket-Protocol":
+			req.Header["Sec-WebSocket-Protocol"] = vs
 		default:
 			req.Header[k] = vs
 		}
 	}
 
 	if d.EnableCompression {
-		req.Header.Set("Sec-Websocket-Extensions", "permessage-deflate; server_no_context_takeover; client_no_context_takeover")
+		req.Header["Sec-WebSocket-Extensions"] = []string{"permessage-deflate; server_no_context_takeover; client_no_context_takeover"}
 	}
 
 	var deadline time.Time
