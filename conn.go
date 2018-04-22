@@ -9,13 +9,14 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"strconv"
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"v2ray.com/core/common/buf"
 )
 
 const (
@@ -733,7 +734,7 @@ func (c *Conn) advanceFrame() (int, error) {
 	// 1. Skip remainder of previous frame.
 
 	if c.readRemaining > 0 {
-		if _, err := io.CopyN(ioutil.Discard, c.br, c.readRemaining); err != nil {
+		if _, err := io.CopyN(buf.DiscardBytes, c.br, c.readRemaining); err != nil {
 			return noFrame, err
 		}
 	}
@@ -966,18 +967,6 @@ func (r *messageReader) Read(b []byte) (int, error) {
 
 func (r *messageReader) Close() error {
 	return nil
-}
-
-// ReadMessage is a helper method for getting a reader using NextReader and
-// reading from that reader to a buffer.
-func (c *Conn) ReadMessage() (messageType int, p []byte, err error) {
-	var r io.Reader
-	messageType, r, err = c.NextReader()
-	if err != nil {
-		return messageType, nil, err
-	}
-	p, err = ioutil.ReadAll(r)
-	return messageType, p, err
 }
 
 // SetReadDeadline sets the read deadline on the underlying network connection.

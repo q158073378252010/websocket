@@ -441,21 +441,6 @@ func (r failingReader) Read(p []byte) (int, error) {
 	return 0, io.EOF
 }
 
-func TestFailedConnectionReadPanic(t *testing.T) {
-	c := newConn(fakeNetConn{Reader: failingReader{}, Writer: nil}, false, 1024, 1024)
-
-	defer func() {
-		if v := recover(); v != nil {
-			return
-		}
-	}()
-
-	for i := 0; i < 20000; i++ {
-		c.ReadMessage()
-	}
-	t.Fatal("should not get here")
-}
-
 func TestBufioReuse(t *testing.T) {
 	brw := bufio.NewReadWriter(bufio.NewReader(nil), bufio.NewWriter(nil))
 	c := newConnBRW(nil, false, 0, 0, brw)

@@ -8,7 +8,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -17,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"v2ray.com/core/common/buf"
 )
 
 var cstUpgrader = Upgrader{
@@ -128,7 +129,11 @@ func sendRecv(t *testing.T, ws *Conn) {
 	if err := ws.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 		t.Fatalf("SetReadDeadline: %v", err)
 	}
-	_, p, err := ws.ReadMessage()
+	_, r, err := ws.NextReader()
+	if err != nil {
+		t.Fatalf("NextReader: %v", err)
+	}
+	p, err := buf.ReadAllToBytes(r)
 	if err != nil {
 		t.Fatalf("ReadMessage: %v", err)
 	}
@@ -386,7 +391,7 @@ func TestRespOnBadHandshake(t *testing.T) {
 		t.Errorf("resp.StatusCode=%d, want %d", resp.StatusCode, expectedStatus)
 	}
 
-	p, err := ioutil.ReadAll(resp.Body)
+	p, err := buf.ReadAllToBytes(resp.Body)
 	if err != nil {
 		t.Fatalf("ReadFull(resp.Body) returned error %v", err)
 	}
