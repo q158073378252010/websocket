@@ -44,12 +44,6 @@ type Dialer struct {
 	// Subprotocols specifies the client's requested subprotocols.
 	Subprotocols []string
 
-	// EnableCompression specifies if the client should attempt to negotiate
-	// per message compression (RFC 7692). Setting this value to true does not
-	// guarantee that compression will be supported. Currently only "no context
-	// takeover" modes are supported.
-	EnableCompression bool
-
 	// Jar specifies the cookie jar.
 	// If Jar is nil, cookies are not sent in requests and ignored
 	// in responses.
@@ -171,10 +165,6 @@ func (d *Dialer) Dial(urlStr string, requestHeader http.Header) (*Conn, *http.Re
 		}
 	}
 
-	if d.EnableCompression {
-		req.Header["Sec-WebSocket-Extensions"] = []string{"permessage-deflate; server_no_context_takeover; client_no_context_takeover"}
-	}
-
 	var deadline time.Time
 	if d.HandshakeTimeout != 0 {
 		deadline = time.Now().Add(d.HandshakeTimeout)
@@ -272,8 +262,6 @@ func (d *Dialer) Dial(urlStr string, requestHeader http.Header) (*Conn, *http.Re
 		if !snct || !cnct {
 			return nil, resp, errInvalidCompression
 		}
-		conn.newCompressionWriter = compressNoContextTakeover
-		conn.newDecompressionReader = decompressNoContextTakeover
 		break
 	}
 

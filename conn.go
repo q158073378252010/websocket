@@ -239,10 +239,6 @@ type Conn struct {
 	writeErrMu sync.Mutex
 	writeErr   error
 
-	enableWriteCompression bool
-	compressionLevel       int
-	newCompressionWriter   func(io.WriteCloser, int) io.WriteCloser
-
 	// Read fields
 	reader        io.ReadCloser // the current reader returned to the application
 	readErr       error
@@ -258,9 +254,6 @@ type Conn struct {
 	handleClose   func(int, string) error
 	readErrCount  int
 	messageReader *messageReader // the current low-level reader
-
-	readDecompress         bool // whether last read frame had RSV1 set
-	newDecompressionReader func(io.Reader) io.ReadCloser
 }
 
 func newConn(conn net.Conn, isServer bool, readBufferSize, writeBufferSize int) *Conn {
@@ -322,14 +315,12 @@ func newConnBRW(conn net.Conn, isServer bool, readBufferSize, writeBufferSize in
 	}
 
 	c := &Conn{
-		isServer:               isServer,
-		br:                     br,
-		conn:                   conn,
-		mu:                     mu,
-		readFinal:              true,
-		writeBuf:               writeBuf,
-		enableWriteCompression: true,
-		compressionLevel:       defaultCompressionLevel,
+		isServer:  isServer,
+		br:        br,
+		conn:      conn,
+		mu:        mu,
+		readFinal: true,
+		writeBuf:  writeBuf,
 	}
 	c.SetCloseHandler(nil)
 	c.SetPingHandler(nil)
@@ -497,11 +488,6 @@ func (c *Conn) NextWriter(messageType int) (io.WriteCloser, error) {
 		pos:       maxFrameHeaderSize,
 	}
 	c.writer = mw
-	if c.newCompressionWriter != nil && c.enableWriteCompression && isData(messageType) {
-		w := c.newCompressionWriter(c.writer, c.compressionLevel)
-		mw.compress = true
-		c.writer = w
-	}
 	return c.writer, nil
 }
 
@@ -709,7 +695,7 @@ func (w *messageWriter) Close() error {
 // writing the message and closing the writer.
 func (c *Conn) WriteMessage(messageType int, data []byte) error {
 
-	if c.isServer && (c.newCompressionWriter == nil || !c.enableWriteCompression) {
+	if c.isServer {
 		// Fast path with no allocations and single frame.
 
 		if err := c.prepWrite(messageType); err != nil {
@@ -763,12 +749,6 @@ func (c *Conn) advanceFrame() (int, error) {
 	frameType := int(p[0] & 0xf)
 	mask := p[1]&maskBit != 0
 	c.readRemaining = int64(p[1] & 0x7f)
-
-	c.readDecompress = false
-	if c.newDecompressionReader != nil && (p[0]&rsv1Bit) != 0 {
-		c.readDecompress = true
-		p[0] &^= rsv1Bit
-	}
 
 	if rsv := p[0] & (rsv1Bit | rsv2Bit | rsv3Bit); rsv != 0 {
 		return noFrame, c.handleProtocolError("unexpected reserved bits 0x" + strconv.FormatInt(int64(rsv), 16))
@@ -922,9 +902,6 @@ func (c *Conn) NextReader() (messageType int, r io.Reader, err error) {
 		if frameType == TextMessage || frameType == BinaryMessage {
 			c.messageReader = &messageReader{c}
 			c.reader = c.messageReader
-			if c.readDecompress {
-				c.reader = c.newDecompressionReader(c.reader)
-			}
 			return frameType, c.reader, nil
 		}
 	}
@@ -1098,25 +1075,6 @@ func (c *Conn) SetPongHandler(h func(appData string) error) {
 // modifications to connection specific flags.
 func (c *Conn) UnderlyingConn() net.Conn {
 	return c.conn
-}
-
-// EnableWriteCompression enables and disables write compression of
-// subsequent text and binary messages. This function is a noop if
-// compression was not negotiated with the peer.
-func (c *Conn) EnableWriteCompression(enable bool) {
-	c.enableWriteCompression = enable
-}
-
-// SetCompressionLevel sets the flate compression level for subsequent text and
-// binary messages. This function is a noop if compression was not negotiated
-// with the peer. See the compress/flate package for a description of
-// compression levels.
-func (c *Conn) SetCompressionLevel(level int) error {
-	if !isValidCompressionLevel(level) {
-		return errors.New("websocket: invalid compression level")
-	}
-	c.compressionLevel = level
-	return nil
 }
 
 // FormatCloseMessage formats closeCode and text as a WebSocket close message.

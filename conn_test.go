@@ -76,59 +76,52 @@ func TestFraming(t *testing.T) {
 			return io.WriteString(w, string(writeBuf[:n]))
 		}},
 	}
+	for _, isServer := range []bool{true, false} {
+		for _, chunker := range readChunkers {
 
-	for _, compress := range []bool{false, true} {
-		for _, isServer := range []bool{true, false} {
-			for _, chunker := range readChunkers {
+			var connBuf bytes.Buffer
+			wc := newConn(fakeNetConn{Reader: nil, Writer: &connBuf}, isServer, 1024, 1024)
+			rc := newConn(fakeNetConn{Reader: chunker.f(&connBuf), Writer: nil}, !isServer, 1024, 1024)
+			for _, n := range frameSizes {
+				for _, writer := range writers {
+					name := fmt.Sprintf("z:%v, s:%v, r:%s, n:%d w:%s", false, isServer, chunker.name, n, writer.name)
 
-				var connBuf bytes.Buffer
-				wc := newConn(fakeNetConn{Reader: nil, Writer: &connBuf}, isServer, 1024, 1024)
-				rc := newConn(fakeNetConn{Reader: chunker.f(&connBuf), Writer: nil}, !isServer, 1024, 1024)
-				if compress {
-					wc.newCompressionWriter = compressNoContextTakeover
-					rc.newDecompressionReader = decompressNoContextTakeover
-				}
-				for _, n := range frameSizes {
-					for _, writer := range writers {
-						name := fmt.Sprintf("z:%v, s:%v, r:%s, n:%d w:%s", compress, isServer, chunker.name, n, writer.name)
+					w, err := wc.NextWriter(TextMessage)
+					if err != nil {
+						t.Errorf("%s: wc.NextWriter() returned %v", name, err)
+						continue
+					}
+					nn, err := writer.f(w, n)
+					if err != nil || nn != n {
+						t.Errorf("%s: w.Write(writeBuf[:n]) returned %d, %v", name, nn, err)
+						continue
+					}
+					err = w.Close()
+					if err != nil {
+						t.Errorf("%s: w.Close() returned %v", name, err)
+						continue
+					}
 
-						w, err := wc.NextWriter(TextMessage)
-						if err != nil {
-							t.Errorf("%s: wc.NextWriter() returned %v", name, err)
-							continue
-						}
-						nn, err := writer.f(w, n)
-						if err != nil || nn != n {
-							t.Errorf("%s: w.Write(writeBuf[:n]) returned %d, %v", name, nn, err)
-							continue
-						}
-						err = w.Close()
-						if err != nil {
-							t.Errorf("%s: w.Close() returned %v", name, err)
-							continue
-						}
+					opCode, r, err := rc.NextReader()
+					if err != nil || opCode != TextMessage {
+						t.Errorf("%s: NextReader() returned %d, r, %v", name, opCode, err)
+						continue
+					}
+					rbuf, err := ioutil.ReadAll(r)
+					if err != nil {
+						t.Errorf("%s: ReadFull() returned rbuf, %v", name, err)
+						continue
+					}
 
-						opCode, r, err := rc.NextReader()
-						if err != nil || opCode != TextMessage {
-							t.Errorf("%s: NextReader() returned %d, r, %v", name, opCode, err)
-							continue
-						}
-						rbuf, err := ioutil.ReadAll(r)
-						if err != nil {
-							t.Errorf("%s: ReadFull() returned rbuf, %v", name, err)
-							continue
-						}
+					if len(rbuf) != n {
+						t.Errorf("%s: len(rbuf) is %d, want %d", name, len(rbuf), n)
+						continue
+					}
 
-						if len(rbuf) != n {
-							t.Errorf("%s: len(rbuf) is %d, want %d", name, len(rbuf), n)
-							continue
-						}
-
-						for i, b := range rbuf {
-							if byte(i) != b {
-								t.Errorf("%s: bad byte at offset %d", name, i)
-								break
-							}
+					for i, b := range rbuf {
+						if byte(i) != b {
+							t.Errorf("%s: bad byte at offset %d", name, i)
+							break
 						}
 					}
 				}
